@@ -1,0 +1,8 @@
+{
+  "name": "PMB GROUP SARL — Kinshasa",
+  "description": "Site officiel de PMB GROUP SARL à Kinshasa (RDC) : présentation des 6 branches opérationnelles (PMB Shop, PMB Store, PMB Transport, PMB Immobilier, PMB Event, PMB Fondation), services détaillés et prise de contact.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+:root {
+  --pmb-dark-bg: #121212;
+  --pmb-anthracite: #262626;
+  --pmb-surface-elevated: #1c1c1e;
+  --pmb-blue-horizon: #229ed9;
+  --pmb-text-primary: #f4f4f5;
+  --pmb-text-secondary: #a1a1aa;
+  --pmb-border-subtle: rgba(255, 255, 255, 0.08);
+
+  --font-display: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  --font-body: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    background-color: var(--pmb-dark-bg);
+    color: var(--pmb-text-primary);
+    font-family: var(--font-body);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    text-wrap: balance;
+  }
+
+  .font-mono-tabular {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+.carousel-stage {
+  perspective: 1400px;
+  transform-style: preserve-3d;
+}
+
+.carousel-card-3d {
+  transition:
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 320ms cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .carousel-card-3d {
+    transition: opacity 150ms linear;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 12mm;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  .no-print {
+    display: none !important;
+  }
+  body.pmb-print-registration #fondation,
+  body.pmb-print-registration #portail {
+    display: none !important;
+  }
+  body.pmb-print-fondation #inscription,
+  body.pmb-print-fondation #portail {
+    display: none !important;
+  }
+  body.pmb-print-portal #inscription,
+  body.pmb-print-portal #fondation {
+    display: none !important;
+  }
+  .print-certificate {
+    display: block !important;
+    background: #ffffff !important;
+    color: #111827 !important;
+    border: 1px solid #d1d5db !important;
+    box-shadow: none !important;
+    page-break-inside: avoid;
+  }
+}
