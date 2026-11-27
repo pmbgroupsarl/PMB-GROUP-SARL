@@ -90,7 +90,7 @@ export function AdminQADashboardModal({ isOpen, onClose }: AdminQADashboardModal
         <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
           <div>
             <p className="text-xs font-medium text-[#F59E0B] mb-1">
-              Console Administrateur · Auto-Debug & QA Robotique
+              Console Technique · Auto-Debug & QA Robotique
             </p>
             <h2 id="qa-modal-title" className="text-xl sm:text-2xl font-bold text-white">
               Surveillance Logicielle & Diagnostic Senior IA

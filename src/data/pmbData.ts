@@ -68,7 +68,7 @@ export const PMB_PAYMENT_CHANNELS: PaymentChannelInfo[] = [
     name: 'Orange Money (RDC)',
     shortName: 'Orange Money',
     category: 'mobile_money',
-    description: 'Paiement Mobile Money Orange RDC avec confirmation webhook temps réel.',
+    description: 'Paiement Mobile Money Orange RDC avec confirmation instantanée.',
     accentColor: '#F97316',
     prefixHint: '+243 84 / 85 / 89',
   },

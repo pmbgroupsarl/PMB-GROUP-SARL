@@ -1,4 +1,4 @@
-import { FormEvent, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
 import {
   Bell,
   CheckCircle2,
@@ -75,9 +75,29 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
   } = usePmbStore();
 
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [adminEmail, setAdminEmail] = useState('admin@pmb-group.cd');
-  const [adminPin, setAdminPin] = useState('');
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [authMode, setAuthMode] = useState<'loading' | 'setup' | 'login'>('loading');
+  const [isSubmittingAuth, setIsSubmittingAuth] = useState(false);
+  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginSecret, setLoginSecret] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    fetch('/api/portal-auth/status')
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error('status_error'))))
+      .then((data: { mode?: 'setup' | 'login' }) => {
+        if (!active) return;
+        setAuthMode(data.mode === 'setup' ? 'setup' : 'login');
+      })
+      .catch(() => {
+        if (!active) return;
+        setAuthMode('login');
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const [activeTab, setActiveTab] = useState<AdminTab>('subscribers');
   const [adminFeedback, setAdminFeedback] = useState<string | null>(null);
@@ -100,7 +120,7 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
   const [newMemberAddress, setNewMemberAddress] = useState('');
   const [newMemberStatus, setNewMemberStatus] = useState<SubscriptionStatus>('Actif');
   const [newMemberAmountUsd, setNewMemberAmountUsd] = useState('20');
-  const [newMemberPassword, setNewMemberPassword] = useState('pmb2026');
+  const [newMemberPassword, setNewMemberPassword] = useState('');
   const [newMemberError, setNewMemberError] = useState<string | null>(null);
 
   // Onglet 2 : Suivi des commandes par branche
@@ -160,18 +180,65 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
     }, 4500);
   };
 
-  const handleAdminLogin = (e: FormEvent) => {
+  const handlePortalAuthSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoginError(null);
-    const cleanEmail = adminEmail.trim().toLowerCase();
-    if (cleanEmail !== 'admin@pmb-group.cd' || adminPin.trim() !== '2026') {
-      setLoginError(
-        'Identifiants administrateur invalides. Utilisez admin@pmb-group.cd et le code PIN 2026 (ou le bouton Démo).'
-      );
+    const cleanId = loginIdentifier.trim().toLowerCase();
+    const cleanSecret = loginSecret.trim();
+    if (!cleanId || !cleanSecret) {
+      setLoginError('Veuillez saisir votre identifiant et votre mot de passe.');
       return;
     }
-    setIsAuthenticated(true);
-    setAdminPin('');
+
+    setIsSubmittingAuth(true);
+    try {
+      const endpoint =
+        authMode === 'setup' ? '/api/portal-auth/bootstrap' : '/api/portal-auth/login';
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: cleanId, secret: cleanSecret }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        authenticated?: boolean;
+        token?: string;
+        error?: string;
+      };
+      if (!res.ok || !data.authenticated || !data.token) {
+        setLoginError(
+          data.error || 'Identifiants invalides. Veuillez vérifier votre saisie.'
+        );
+        if (res.status === 409 && authMode === 'setup') {
+          setAuthMode('login');
+        }
+        return;
+      }
+
+      setAuthToken(data.token);
+      setIsAuthenticated(true);
+      setAuthMode('login');
+      setLoginIdentifier('');
+      setLoginSecret('');
+    } catch {
+      setLoginError('Impossible de vérifier les identifiants pour le moment.');
+    } finally {
+      setIsSubmittingAuth(false);
+    }
+  };
+
+  const handleAdminLogout = async () => {
+    const token = authToken;
+    setAuthToken(null);
+    setIsAuthenticated(false);
+    setLoginIdentifier('');
+    setLoginSecret('');
+    setInspectedRecord(null);
+    if (token) {
+      await fetch('/api/portal-auth/logout', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => {});
+    }
   };
 
   const kpis = useMemo(() => {
@@ -301,7 +368,7 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
     setNewMemberPhone('+243 ');
     setNewMemberAddress('');
     setNewMemberAmountUsd('20');
-    setNewMemberPassword('pmb2026');
+    setNewMemberPassword('');
     setShowNewMemberForm(false);
     showToast(
       `Membre ${res.record.fullName} ajouté (${res.record.dossierId}). Compte prêt pour ${res.record.email}.`
@@ -442,39 +509,44 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
               Dashboard Administrateur Tout-en-Un
             </h3>
             <p className="text-xs sm:text-sm text-zinc-400 mt-1">
-              Gérez les membres et adhésions, suivez les commandes des 6 branches et modifiez les
-              contenus CMS (services, FAQ, actus, projets et catalogue) en temps réel.
+              {authMode === 'setup'
+                ? 'Premier lancement : définissez votre identifiant et votre mot de passe d’accès pour activer le tableau de bord.'
+                : 'Veuillez saisir vos identifiants d’accès pour ouvrir le tableau de bord.'}
             </p>
           </div>
         </div>
 
-        <form onSubmit={handleAdminLogin} noValidate className="space-y-4">
+        <form onSubmit={handlePortalAuthSubmit} noValidate className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label htmlFor="adm-email" className="block text-xs font-medium text-zinc-300 mb-1.5">
-                E-mail Administrateur
+              <label htmlFor="portal-id" className="block text-xs font-medium text-zinc-300 mb-1.5">
+                Identifiant
               </label>
               <input
-                id="adm-email"
-                type="email"
-                value={adminEmail}
-                onChange={(e) => setAdminEmail(e.target.value)}
-                className="w-full rounded-lg border border-white/15 bg-[#121212] px-3.5 py-2.5 text-sm text-white font-mono-tabular focus:border-[#F59E0B] focus:outline-none"
+                id="portal-id"
+                type="text"
+                autoComplete="off"
+                value={loginIdentifier}
+                onChange={(e) => setLoginIdentifier(e.target.value)}
+                placeholder="Identifiant d’accès"
+                disabled={authMode === 'loading' || isSubmittingAuth}
+                className="w-full rounded-lg border border-white/15 bg-[#121212] px-3.5 py-2.5 text-sm text-white font-mono-tabular focus:border-[#F59E0B] focus:outline-none disabled:opacity-60"
               />
             </div>
 
             <div>
-              <label htmlFor="adm-pin" className="block text-xs font-medium text-zinc-300 mb-1.5">
-                Code PIN d’accès (Démo : 2026)
+              <label htmlFor="portal-secret" className="block text-xs font-medium text-zinc-300 mb-1.5">
+                {authMode === 'setup' ? 'Définir un mot de passe (min. 4 car.)' : 'Mot de passe'}
               </label>
               <input
-                id="adm-pin"
+                id="portal-secret"
                 type="password"
-                inputMode="numeric"
-                value={adminPin}
-                onChange={(e) => setAdminPin(e.target.value)}
+                autoComplete="off"
+                value={loginSecret}
+                onChange={(e) => setLoginSecret(e.target.value)}
                 placeholder="••••"
-                className="w-full rounded-lg border border-white/15 bg-[#121212] px-3.5 py-2.5 text-sm text-white font-mono-tabular focus:border-[#F59E0B] focus:outline-none"
+                disabled={authMode === 'loading' || isSubmittingAuth}
+                className="w-full rounded-lg border border-white/15 bg-[#121212] px-3.5 py-2.5 text-sm text-white font-mono-tabular focus:border-[#F59E0B] focus:outline-none disabled:opacity-60"
               />
             </div>
           </div>
@@ -485,24 +557,22 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
             </p>
           )}
 
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+          <div className="flex flex-wrap items-center gap-3 pt-1">
             <button
               type="submit"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#F59E0B] hover:bg-[#d98a07] text-[#121212] text-xs sm:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap"
+              disabled={authMode === 'loading' || isSubmittingAuth}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#F59E0B] hover:bg-[#d98a07] disabled:opacity-60 text-[#121212] text-xs sm:text-sm font-bold transition-colors cursor-pointer whitespace-nowrap"
             >
               <ShieldCheck className="w-4 h-4" aria-hidden="true" />
-              <span>Ouvrir le Dashboard</span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => {
-                setIsAuthenticated(true);
-                setLoginError(null);
-              }}
-              className="px-4 py-2.5 rounded-lg bg-[#262626] hover:bg-zinc-700 border border-white/15 text-xs font-semibold text-white transition-colors cursor-pointer whitespace-nowrap"
-            >
-              Accès Démo Administrateur (1 clic)
+              <span>
+                {authMode === 'loading'
+                  ? 'Vérification...'
+                  : isSubmittingAuth
+                    ? 'Validation...'
+                    : authMode === 'setup'
+                      ? 'Configurer et ouvrir le Dashboard'
+                      : 'Ouvrir le Dashboard'}
+              </span>
             </button>
           </div>
         </form>
@@ -521,9 +591,6 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
                 Administration PMB
               </p>
               <p className="text-sm font-bold text-white mt-0.5">Pilotage Tout-en-Un</p>
-              <p className="text-[11px] text-zinc-400 font-mono-tabular mt-0.5 truncate">
-                admin@pmb-group.cd
-              </p>
             </div>
 
             <nav aria-label="Modules d'administration" className="space-y-1">
@@ -591,8 +658,7 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
             <button
               type="button"
               onClick={() => {
-                setIsAuthenticated(false);
-                setInspectedRecord(null);
+                void handleAdminLogout();
               }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-medium text-zinc-400 hover:text-white hover:bg-[#1c1c1e] transition-colors cursor-pointer"
             >
@@ -622,14 +688,14 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
             <div className="flex flex-wrap items-center gap-2">
               {confirmReset ? (
                 <div className="flex items-center gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs">
-                  <span className="text-amber-200">Confirmer réinitialisation démo ?</span>
+                  <span className="text-amber-200">Confirmer la réinitialisation ?</span>
                   <button
                     type="button"
                     onClick={() => {
                       resetAllDemoData();
                       setConfirmReset(false);
                       setInspectedRecord(null);
-                      showToast('Données de démonstration réinitialisées.');
+                      showToast('Données initiales restaurées.');
                     }}
                     className="font-bold text-white hover:underline cursor-pointer"
                   >
@@ -650,7 +716,7 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/10 bg-[#121212] hover:bg-[#262626] text-xs text-zinc-300 cursor-pointer whitespace-nowrap"
                 >
                   <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>Réinitialiser démo</span>
+                  <span>Réinitialiser les données</span>
                 </button>
               )}
             </div>
@@ -962,10 +1028,10 @@ export function AdminDashboard({ onOpenQaDashboard }: AdminDashboardProps) {
                       </label>
                       <input
                         id="adm-mem-pwd"
-                        type="text"
+                        type="password"
                         value={newMemberPassword}
                         onChange={(e) => setNewMemberPassword(e.target.value)}
-                        placeholder="pmb2026"
+                        placeholder="••••"
                         className="w-full rounded-lg border border-white/15 bg-[#1c1c1e] px-3 py-2 text-xs sm:text-sm text-white font-mono-tabular placeholder:text-zinc-500 focus:border-[#229ED9] focus:outline-none"
                       />
                     </div>

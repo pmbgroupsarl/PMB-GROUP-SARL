@@ -11,10 +11,12 @@ dotenv.config();
 const PORT = Number(process.env.PORT) || 3000;
 const HOST = '0.0.0.0';
 const STORE_PATH = path.resolve(process.cwd(), '.pmb-runtime-store.json');
-const WEBHOOK_SECRET =
-  process.env.PMB_WEBHOOK_SECRET && process.env.PMB_WEBHOOK_SECRET !== 'MY_PMB_WEBHOOK_SECRET'
-    ? process.env.PMB_WEBHOOK_SECRET
-    : crypto.createHash('sha256').update('PMB_GROUP_SARL_RCCM_24_A_04653_KEY').digest('hex');
+const PORTAL_SESSION_SECRET = crypto.randomBytes(32).toString('hex');
+const PORTAL_TOKEN_TTL_MS = 8 * 60 * 60 * 1000;
+const PORTAL_RATE_WINDOW_MS = 15 * 60 * 1000;
+const PORTAL_MAX_FAILED_ATTEMPTS = 8;
+const revokedPortalTokens = new Set<string>();
+const portalLoginFailures = new Map<string, { count: number; resetAt: number }>();
 
 type PaymentChannel =
   | 'card_visa_mastercard'
@@ -37,10 +39,10 @@ interface PaymentTransaction {
   customerName: string;
   customerContact: string;
   maskedAccount: string;
-  status: 'PENDING_WEBHOOK' | 'CONFIRMED' | 'FAILED';
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED';
   createdAt: string;
   settledAt: string | null;
-  webhookVerified: boolean;
+  verified: boolean;
 }
 
 interface AgendaEvent {
@@ -136,6 +138,13 @@ interface RegistrationRecord {
   createdAt: string;
 }
 
+interface PortalAuthRecord {
+  salt: string;
+  identifierHash: string;
+  secretHash: string;
+  claimedAt: string;
+}
+
 interface RuntimeStore {
   transactions: PaymentTransaction[];
   agendaEvents: AgendaEvent[];
@@ -143,6 +152,7 @@ interface RuntimeStore {
   quotes: QuoteRecord[];
   qaIncidents: QaIncidentRecord[];
   registrations: RegistrationRecord[];
+  portalAuth: PortalAuthRecord | null;
 }
 
 const DEFAULT_STORE: RuntimeStore = {
@@ -164,7 +174,7 @@ const DEFAULT_STORE: RuntimeStore = {
       status: 'CONFIRMED',
       createdAt: '2026-11-18T09:15:00.000Z',
       settledAt: '2026-11-18T09:15:04.000Z',
-      webhookVerified: true,
+      verified: true,
     },
     {
       txRef: 'PMB-TX-20261118-02',
@@ -183,7 +193,7 @@ const DEFAULT_STORE: RuntimeStore = {
       status: 'CONFIRMED',
       createdAt: '2026-11-18T10:40:00.000Z',
       settledAt: '2026-11-18T10:40:03.000Z',
-      webhookVerified: true,
+      verified: true,
     },
   ],
   agendaEvents: [
@@ -283,17 +293,55 @@ const DEFAULT_STORE: RuntimeStore = {
   quotes: [],
   qaIncidents: [],
   registrations: [],
+  portalAuth: null,
 };
 
 function readStore(): RuntimeStore {
   try {
     if (fs.existsSync(STORE_PATH)) {
       const raw = fs.readFileSync(STORE_PATH, 'utf-8');
-      const parsed = JSON.parse(raw) as Partial<RuntimeStore>;
+      const parsed = JSON.parse(raw) as Partial<RuntimeStore> & {
+        adminAuth?: { salt?: string; emailHash?: string; pinHash?: string; claimedAt?: string } | null;
+      };
+      const rawAuth = parsed.portalAuth ?? null;
+      const legacyAuth =
+        !rawAuth &&
+        parsed.adminAuth &&
+        typeof parsed.adminAuth.salt === 'string' &&
+        typeof parsed.adminAuth.emailHash === 'string' &&
+        typeof parsed.adminAuth.pinHash === 'string'
+          ? {
+              salt: parsed.adminAuth.salt,
+              identifierHash: parsed.adminAuth.emailHash,
+              secretHash: parsed.adminAuth.pinHash,
+              claimedAt: parsed.adminAuth.claimedAt || new Date().toISOString(),
+            }
+          : null;
+      const resolvedAuth =
+        rawAuth &&
+        typeof rawAuth.salt === 'string' &&
+        typeof rawAuth.identifierHash === 'string' &&
+        typeof rawAuth.secretHash === 'string'
+          ? rawAuth
+          : legacyAuth;
+
+      const rawTransactions = Array.isArray(parsed.transactions)
+        ? parsed.transactions.map((t) => {
+            const legacy = t as PaymentTransaction & { status?: string };
+            const isConfirmed = legacy.status === 'CONFIRMED';
+            return {
+              ...legacy,
+              status:
+                isConfirmed || legacy.status === 'FAILED'
+                  ? legacy.status
+                  : ('PENDING' as const),
+              verified: Boolean(legacy.verified ?? isConfirmed),
+            };
+          })
+        : DEFAULT_STORE.transactions;
+
       return {
-        transactions: Array.isArray(parsed.transactions)
-          ? parsed.transactions
-          : DEFAULT_STORE.transactions,
+        transactions: rawTransactions,
         agendaEvents: Array.isArray(parsed.agendaEvents)
           ? parsed.agendaEvents
           : DEFAULT_STORE.agendaEvents,
@@ -303,6 +351,7 @@ function readStore(): RuntimeStore {
         quotes: Array.isArray(parsed.quotes) ? parsed.quotes : [],
         qaIncidents: Array.isArray(parsed.qaIncidents) ? parsed.qaIncidents : [],
         registrations: Array.isArray(parsed.registrations) ? parsed.registrations : [],
+        portalAuth: resolvedAuth,
       };
     }
   } catch {
@@ -319,11 +368,82 @@ function writeStore(store: RuntimeStore): void {
   }
 }
 
-function signWebhookPayload(txRef: string, amount: number, currency: string): string {
-  return crypto
-    .createHmac('sha256', WEBHOOK_SECRET)
-    .update(`${txRef}:${amount}:${currency}`)
-    .digest('hex');
+function getClientIpKey(req: Request): string {
+  const forwarded = String(req.headers['x-forwarded-for'] || '')
+    .split(',')[0]
+    .trim();
+  return forwarded || req.ip || 'unknown';
+}
+
+function isPortalLoginRateLimited(ipKey: string): boolean {
+  const entry = portalLoginFailures.get(ipKey);
+  if (!entry) return false;
+  if (Date.now() > entry.resetAt) {
+    portalLoginFailures.delete(ipKey);
+    return false;
+  }
+  return entry.count >= PORTAL_MAX_FAILED_ATTEMPTS;
+}
+
+function recordPortalLoginFailure(ipKey: string): void {
+  const now = Date.now();
+  const entry = portalLoginFailures.get(ipKey);
+  if (!entry || now > entry.resetAt) {
+    portalLoginFailures.set(ipKey, { count: 1, resetAt: now + PORTAL_RATE_WINDOW_MS });
+    return;
+  }
+  entry.count += 1;
+}
+
+function createPortalSessionToken(): string {
+  const payload = Buffer.from(
+    JSON.stringify({
+      jti: crypto.randomBytes(12).toString('hex'),
+      exp: Date.now() + PORTAL_TOKEN_TTL_MS,
+      role: 'manager',
+    }),
+    'utf-8'
+  ).toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', PORTAL_SESSION_SECRET)
+    .update(payload)
+    .digest('base64url');
+  return `${payload}.${sig}`;
+}
+
+function verifyPortalSessionToken(token: string): { jti: string } | null {
+  const parts = token.split('.');
+  if (parts.length !== 2) return null;
+  const [payloadB64, sigB64] = parts;
+  if (!payloadB64 || !sigB64) return null;
+  const expectedSig = crypto
+    .createHmac('sha256', PORTAL_SESSION_SECRET)
+    .update(payloadB64)
+    .digest('base64url');
+  const sigBuf = Buffer.from(sigB64);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf-8')) as {
+      jti?: string;
+      exp?: number;
+      role?: string;
+    };
+    if (
+      parsed.role !== 'manager' ||
+      typeof parsed.jti !== 'string' ||
+      typeof parsed.exp !== 'number' ||
+      parsed.exp < Date.now() ||
+      revokedPortalTokens.has(parsed.jti)
+    ) {
+      return null;
+    }
+    return { jti: parsed.jti };
+  } catch {
+    return null;
+  }
 }
 
 function getChannelLabel(channel: PaymentChannel): string {
@@ -374,7 +494,7 @@ Les 6 branches opérationnelles :
 6. PMB Fondation (Or) : Action sociale (« Une action aujourd'hui, un avenir meilleur demain »). 5 statuts de membres selon les Conditions Générales d'Adhésion mises à jour : Membre Fondateur, Membre d'Honneur, Membre Bienfaiteur (soutien financier/matériel, sans droit de vote), Membre Actif (18+ ans, 100$ ou équivalent, participation et vote) et Membre Sympathisant (cotisation mensuelle volontaire accessible). Deux documents PDF officiels sont téléchargeables dans la section Fondation : Conditions d'Adhésion et Fiche d'Adhésion mise à jour.
 
 Passerelle de paiement multi-canaux :
-- Les clients peuvent régler leurs commandes, réservations ou cotisations dans la section « Passerelle de Paiement » (#paiement) via Carte Bancaire (Visa / MasterCard) ou Mobile Money RDC (M-Pesa, Orange Money, Airtel Money, Africell Money), avec validation temps réel par webhook et reçu consigné dans leur compte client.
+- Les clients peuvent régler leurs commandes, réservations ou cotisations dans la section « Passerelle de Paiement » (#paiement) via Carte Bancaire (Visa / MasterCard) ou Mobile Money RDC (M-Pesa, Orange Money, Airtel Money, Africell Money), avec validation temps réel et reçu consigné dans leur compte client.
 
 Consignes de réponse :
 - Réponds toujours en français clair, courtois, structuré et professionnel.
@@ -407,7 +527,130 @@ async function startServer() {
     });
   });
 
-  // 1. PASSERELLE DE PAIEMENT MULTI-CANAUX & WEBHOOKS
+  // 0. AUTHENTIFICATION SÉCURISÉE SERVEUR UNIQUEMENT
+  app.get('/api/portal-auth/status', (_req: Request, res: Response) => {
+    const store = readStore();
+    const configured = Boolean(store.portalAuth);
+    res.json({
+      configured,
+      mode: configured ? 'login' : 'setup',
+    });
+  });
+
+  app.post('/api/portal-auth/bootstrap', (req: Request, res: Response) => {
+    const store = readStore();
+    if (store.portalAuth) {
+      res.status(409).json({
+        error: "L'accès est déjà configuré.",
+      });
+      return;
+    }
+
+    const body = req.body as { identifier?: string; secret?: string };
+    const cleanId = (body.identifier || '').trim().toLowerCase();
+    const cleanSecret = (body.secret || '').trim();
+
+    if (cleanId.length < 3) {
+      res.status(400).json({ error: 'Veuillez saisir un identifiant valide (min. 3 caractères).' });
+      return;
+    }
+    if (cleanSecret.length < 4 || cleanSecret.length > 128) {
+      res.status(400).json({
+        error: 'Le mot de passe doit contenir au moins 4 caractères.',
+      });
+      return;
+    }
+
+    const salt = crypto.randomBytes(16).toString('hex');
+    const identifierHash = crypto.scryptSync(cleanId, salt, 32).toString('hex');
+    const secretHash = crypto.scryptSync(cleanSecret, salt, 64).toString('hex');
+
+    store.portalAuth = {
+      salt,
+      identifierHash,
+      secretHash,
+      claimedAt: new Date().toISOString(),
+    };
+    writeStore(store);
+
+    const token = createPortalSessionToken();
+    res.status(201).json({ authenticated: true, token });
+  });
+
+  app.post('/api/portal-auth/login', (req: Request, res: Response) => {
+    const ipKey = getClientIpKey(req);
+    if (isPortalLoginRateLimited(ipKey)) {
+      res.status(429).json({
+        error: 'Trop de tentatives échouées. Veuillez patienter quelques minutes avant de réessayer.',
+      });
+      return;
+    }
+
+    const body = req.body as { identifier?: string; secret?: string };
+    const cleanId = (body.identifier || '').trim().toLowerCase();
+    const cleanSecret = (body.secret || '').trim();
+
+    if (!cleanId || !cleanSecret) {
+      res.status(400).json({
+        error: 'Veuillez saisir votre identifiant et votre mot de passe.',
+      });
+      return;
+    }
+
+    const store = readStore();
+    if (!store.portalAuth) {
+      res.status(409).json({
+        error: "L'accès doit d'abord être configuré.",
+      });
+      return;
+    }
+
+    const { salt, identifierHash, secretHash } = store.portalAuth;
+    const candidateIdBuf = crypto.scryptSync(cleanId, salt, 32);
+    const storedIdBuf = Buffer.from(identifierHash, 'hex');
+    const candidateSecretBuf = crypto.scryptSync(cleanSecret, salt, 64);
+    const storedSecretBuf = Buffer.from(secretHash, 'hex');
+
+    const idMatch =
+      candidateIdBuf.length === storedIdBuf.length &&
+      crypto.timingSafeEqual(candidateIdBuf, storedIdBuf);
+    const secretMatch =
+      candidateSecretBuf.length === storedSecretBuf.length &&
+      crypto.timingSafeEqual(candidateSecretBuf, storedSecretBuf);
+
+    if (!idMatch || !secretMatch) {
+      recordPortalLoginFailure(ipKey);
+      res.status(401).json({
+        error: 'Identifiants invalides. Veuillez vérifier votre saisie.',
+      });
+      return;
+    }
+
+    portalLoginFailures.delete(ipKey);
+    res.json({ authenticated: true, token: createPortalSessionToken() });
+  });
+
+  app.get('/api/portal-auth/session', (req: Request, res: Response) => {
+    const authHeader = String(req.headers.authorization || '');
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token || !verifyPortalSessionToken(token)) {
+      res.status(401).json({ authenticated: false });
+      return;
+    }
+    res.json({ authenticated: true });
+  });
+
+  app.post('/api/portal-auth/logout', (req: Request, res: Response) => {
+    const authHeader = String(req.headers.authorization || '');
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const verified = token ? verifyPortalSessionToken(token) : null;
+    if (verified) {
+      revokedPortalTokens.add(verified.jti);
+    }
+    res.json({ authenticated: false });
+  });
+
+  // 1. PASSERELLE DE PAIEMENT MULTI-CANAUX
   app.get('/api/payments/receipts', (_req: Request, res: Response) => {
     const store = readStore();
     res.json({ transactions: store.transactions });
@@ -469,31 +712,26 @@ async function startServer() {
       customerName: body.customerName.trim(),
       customerContact: (body.customerContact || '').trim() || 'Client Kinshasa',
       maskedAccount: (body.maskedAccount || 'Compte vérifié').trim(),
-      status: 'PENDING_WEBHOOK',
+      status: 'PENDING',
       createdAt: now.toISOString(),
       settledAt: null,
-      webhookVerified: false,
+      verified: false,
     };
 
     const store = readStore();
     store.transactions.unshift(transaction);
     writeStore(store);
 
-    const signature = signWebhookPayload(txRef, amount, currency);
-
     res.status(201).json({
       transaction,
-      webhookCallbackUrl: '/api/payments/webhook',
-      webhookSignature: signature,
     });
   });
 
-  app.post('/api/payments/webhook', (req: Request, res: Response) => {
-    const signatureHeader = String(req.headers['x-pmb-signature'] || '');
-    const body = req.body as { txRef?: string; event?: string };
+  app.post('/api/payments/confirm', (req: Request, res: Response) => {
+    const body = req.body as { txRef?: string };
 
     if (!body.txRef) {
-      res.status(400).json({ error: 'txRef manquant dans le payload webhook.' });
+      res.status(400).json({ error: 'Référence de transaction manquante.' });
       return;
     }
 
@@ -505,20 +743,10 @@ async function startServer() {
     }
 
     const tx = store.transactions[txIndex];
-    const expectedSig = signWebhookPayload(tx.txRef, tx.amount, tx.currency);
-
-    const sigBuf = Buffer.from(signatureHeader);
-    const expectedBuf = Buffer.from(expectedSig);
-
-    if (sigBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(sigBuf, expectedBuf)) {
-      res.status(401).json({ error: 'Signature HMAC webhook invalide.' });
-      return;
-    }
-
     if (tx.status !== 'CONFIRMED') {
       const now = new Date();
       tx.status = 'CONFIRMED';
-      tx.webhookVerified = true;
+      tx.verified = true;
       tx.settledAt = now.toISOString();
       tx.receiptNumber = `REC-PMB-${now.getFullYear()}-${String(
         10000 + Math.floor(Math.random() * 89999)
@@ -530,7 +758,6 @@ async function startServer() {
 
     res.json({
       verified: true,
-      event: body.event || 'payment.settled',
       transaction: tx,
     });
   });

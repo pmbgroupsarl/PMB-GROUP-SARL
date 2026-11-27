@@ -35,10 +35,10 @@ export interface PaymentReceipt {
   customerName: string;
   customerContact: string;
   maskedAccount: string;
-  status: 'PENDING_WEBHOOK' | 'CONFIRMED' | 'FAILED';
+  status: 'PENDING' | 'CONFIRMED' | 'FAILED';
   createdAt: string;
   settledAt: string | null;
-  webhookVerified: boolean;
+  verified?: boolean;
 }
 
 const BRANCH_SERVICE_PRESETS: Record<string, { label: string; amountUsd: number }> = {
@@ -230,48 +230,44 @@ export function PaymentGatewaySection({
       const initData = (await initRes.json()) as {
         error?: string;
         transaction?: PaymentReceipt;
-        webhookCallbackUrl?: string;
-        webhookSignature?: string;
       };
 
-      if (!initRes.ok || !initData.transaction || !initData.webhookSignature) {
+      if (!initRes.ok || !initData.transaction) {
         throw new Error(initData.error || 'Échec lors de l’initialisation du paiement.');
       }
 
       setProcessingStep(
         paymentTab === 'mobile_money'
-          ? 'Validation USSD / Push Mobile Money et vérification webhook HMAC...'
-          : 'Autorisation 3D Secure et confirmation webhook temps réel...'
+          ? 'Validation USSD / Push Mobile Money en cours...'
+          : 'Autorisation 3D Secure et confirmation en cours...'
       );
 
       await new Promise((resolve) => setTimeout(resolve, 650));
 
-      const webhookRes = await monitoredFetch(initData.webhookCallbackUrl || '/api/payments/webhook', {
+      const confirmRes = await monitoredFetch('/api/payments/confirm', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-pmb-signature': initData.webhookSignature,
         },
         body: JSON.stringify({
           txRef: initData.transaction.txRef,
-          event: 'payment.settled',
         }),
       });
 
-      const webhookData = (await webhookRes.json()) as {
+      const confirmData = (await confirmRes.json()) as {
         error?: string;
         verified?: boolean;
         transaction?: PaymentReceipt;
       };
 
-      if (!webhookRes.ok || !webhookData.transaction) {
-        throw new Error(webhookData.error || 'Erreur de validation webhook.');
+      if (!confirmRes.ok || !confirmData.transaction) {
+        throw new Error(confirmData.error || 'Erreur lors de la confirmation du paiement.');
       }
 
-      setActiveReceipt(webhookData.transaction);
+      setActiveReceipt(confirmData.transaction);
       setReceipts((prev) => [
-        webhookData.transaction!,
-        ...prev.filter((item) => item.txRef !== webhookData.transaction!.txRef),
+        confirmData.transaction!,
+        ...prev.filter((item) => item.txRef !== confirmData.transaction!.txRef),
       ]);
       setCardNumber('');
       setCardExpiry('');
@@ -303,8 +299,8 @@ export function PaymentGatewaySection({
                 Régler par Carte Bancaire ou Mobile Money RDC
               </h2>
               <p className="mt-3 text-base text-zinc-400">
-                Règlement direct sur les comptes de {PMB_COMPANY.legalName} avec validation temps
-                réel par webhook HMAC-SHA256 et archivage immédiat du reçu dans votre compte client.
+                Règlement direct sur les comptes de {PMB_COMPANY.legalName} avec confirmation
+                instantanée et archivage immédiat du reçu dans votre compte client.
               </p>
             </div>
 
@@ -598,7 +594,7 @@ export function PaymentGatewaySection({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-2">
                 <p className="inline-flex items-center gap-1.5 text-xs text-zinc-400">
                   <Lock className="w-3.5 h-3.5 text-[#F59E0B]" aria-hidden="true" />
-                  <span>Chiffrement TLS & Webhook HMAC-SHA256</span>
+                  <span>Chiffrement TLS & Reçu Certifié</span>
                 </p>
                 <button
                   type="submit"
@@ -622,7 +618,7 @@ export function PaymentGatewaySection({
                     <CheckCircle2 className="w-5 h-5 text-[#229ED9] shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-bold text-white">
-                        Paiement validé par Webhook · Reçu {activeReceipt.receiptNumber}
+                        Paiement confirmé · Reçu {activeReceipt.receiptNumber}
                       </p>
                       <p className="text-xs text-zinc-400 mt-0.5 font-mono-tabular">
                         Réf. {activeReceipt.txRef} · Auth {activeReceipt.authCode}
@@ -657,7 +653,7 @@ export function PaymentGatewaySection({
                   Compte Client · Reçus Consignés
                 </h3>
                 <p className="text-xs text-zinc-400 mt-0.5">
-                  Transactions vérifiées en temps réel via retour webhook
+                  Transactions vérifiées et archivées en temps réel
                 </p>
               </div>
               <button
@@ -702,7 +698,7 @@ export function PaymentGatewaySection({
                       </span>
                       <span className="font-mono-tabular text-[#229ED9]">
                         {tx.receiptNumber || tx.txRef} ·{' '}
-                        {tx.webhookVerified ? 'Validé Webhook' : 'En attente'}
+                        {tx.status === 'CONFIRMED' || tx.verified ? 'Confirmé' : 'En attente'}
                       </span>
                     </div>
                   </li>
