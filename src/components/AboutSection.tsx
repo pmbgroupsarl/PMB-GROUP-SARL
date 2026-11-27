@@ -2,16 +2,21 @@ import { PMB_BRANCHES, PMB_COMPANY, PMB_EVENT_VIDEOS } from '../data/pmbData';
 import { MediaImage } from './MediaImage';
 
 interface AboutSectionProps {
-  onSelectBranchIndex: (index: number) => void;
+  embedded?: boolean;
+  onExploreBranch?: (branchId: string) => void;
 }
 
-export function AboutSection({ onSelectBranchIndex }: AboutSectionProps) {
+export function AboutSection({ embedded = false, onExploreBranch }: AboutSectionProps) {
   return (
     <section
       id="groupe"
-      className="no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20"
+      className={
+        embedded
+          ? 'no-print'
+          : 'no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20'
+      }
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className={embedded ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'}>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-stretch">
           {/* Colonne gauche : Emblème officiel du groupe */}
           <div className="lg:col-span-5 flex flex-col">
@@ -107,15 +112,12 @@ export function AboutSection({ onSelectBranchIndex }: AboutSectionProps) {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  onSelectBranchIndex(0);
-                  document.getElementById('carrousel')?.scrollIntoView({ behavior: 'smooth' });
-                }}
+                onClick={() => onExploreBranch?.(PMB_BRANCHES[0].id)}
                 className="rounded-lg bg-[#262626] hover:bg-[#303030] border border-white/10 p-4 text-left transition-colors cursor-pointer"
               >
-                <p className="text-sm font-semibold text-[#229ED9]">Voir le carrousel</p>
+                <p className="text-sm font-semibold text-[#229ED9]">Accéder aux pôles</p>
                 <p className="text-xs text-zinc-400 mt-1">
-                  {PMB_BRANCHES.length} divisions interactives
+                  {PMB_BRANCHES.length} espaces dédiés
                 </p>
               </button>
             </div>

@@ -2,7 +2,11 @@ import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { usePmbStore } from '../lib/pmbStore';
 
-export function FAQSection() {
+interface FAQSectionProps {
+  embedded?: boolean;
+}
+
+export function FAQSection({ embedded = false }: FAQSectionProps = {}) {
   const { cms } = usePmbStore();
   const faqs = cms.faqs;
   const [openId, setOpenId] = useState<string | null>(faqs[0]?.id || null);
@@ -14,18 +18,24 @@ export function FAQSection() {
   return (
     <section
       id="faq"
-      className="no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20"
+      className={
+        embedded
+          ? 'no-print'
+          : 'no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20'
+      }
     >
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-10">
-          <p className="text-sm font-medium text-[#F59E0B] mb-2">Support & Informations</p>
-          <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-            Questions Fréquentes sur PMB Group
-          </h2>
-          <p className="mt-3 text-base text-zinc-400">
-            Tout ce que vous devez savoir sur nos services et pôles d’activités en RDC.
-          </p>
-        </div>
+      <div className={embedded ? '' : 'max-w-4xl mx-auto px-4 sm:px-6 lg:px-8'}>
+        {!embedded && (
+          <div className="mb-10">
+            <p className="text-sm font-medium text-[#F59E0B] mb-2">Support & Informations</p>
+            <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
+              Questions Fréquentes sur PMB Group
+            </h2>
+            <p className="mt-3 text-base text-zinc-400">
+              Tout ce que vous devez savoir sur nos services et pôles d’activités en RDC.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-3">
           {faqs.map((item) => {

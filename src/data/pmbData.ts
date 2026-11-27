@@ -104,6 +104,7 @@ export interface BranchItem {
   index: string;
   name: string;
   shortName: string;
+  hubSummary: string;
   accentColor: string;
   colorName: string;
   logoImage: string;
@@ -115,6 +116,15 @@ export interface BranchItem {
   quotePlaceholder: string;
   transportModes?: TransportMode[];
 }
+
+export const HUB_BRANCH_IDS = [
+  'pmb-shop',
+  'pmb-event',
+  'pmb-immobilier',
+  'pmb-store',
+  'pmb-transport',
+  'pmb-fondation',
+] as const;
 
 export type VideoCategory =
   | 'all'
@@ -199,6 +209,7 @@ export const PMB_BRANCHES: BranchItem[] = [
     index: '01',
     name: 'PMB Shop',
     shortName: 'Shop',
+    hubSummary: 'Téléphonie, accessoires & unités',
     accentColor: '#D95B5B',
     colorName: 'Corail',
     logoImage: '/assets/aistudio/pmb_shop_a0d2907c.jpeg',
@@ -222,6 +233,7 @@ export const PMB_BRANCHES: BranchItem[] = [
     index: '02',
     name: 'PMB Store',
     shortName: 'Store',
+    hubSummary: 'Commerce général & import-export',
     accentColor: '#F9A825',
     colorName: 'Ambre',
     logoImage: '/assets/aistudio/pmb_store_d6018ccb.jpeg',
@@ -245,6 +257,7 @@ export const PMB_BRANCHES: BranchItem[] = [
     index: '03',
     name: 'PMB Transport',
     shortName: 'Transport',
+    hubSummary: 'Mobilité, logistique & transport',
     accentColor: '#C9C238',
     colorName: 'Jaune',
     logoImage: '/assets/aistudio/pmb_trans_c760e3a3.jpeg',
@@ -292,6 +305,7 @@ export const PMB_BRANCHES: BranchItem[] = [
     index: '04',
     name: 'PMB Immo',
     shortName: 'Immo',
+    hubSummary: 'Immobilier, construction & rénovation',
     accentColor: '#C5B386',
     colorName: 'Champagne',
     logoImage: '/assets/aistudio/pmb_immo_4a936f47.jpeg',
@@ -315,6 +329,7 @@ export const PMB_BRANCHES: BranchItem[] = [
     index: '05',
     name: 'PMB Event',
     shortName: 'Event',
+    hubSummary: 'Sonorisation, écrans LED, podium & événementiel',
     accentColor: '#7B1FA2',
     colorName: 'Pourpre',
     logoImage: '/assets/aistudio/pmb_event_dc038133.jpeg',
@@ -338,6 +353,7 @@ export const PMB_BRANCHES: BranchItem[] = [
     index: '06',
     name: 'PMB Fondation',
     shortName: 'Fondation',
+    hubSummary: 'Actions sociales & communautaires',
     accentColor: '#0284C7',
     colorName: 'Azurin & Or',
     logoImage: '/assets/aistudio/PMB_FONDATION_9f111416.png',

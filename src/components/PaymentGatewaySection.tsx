@@ -18,6 +18,7 @@ import { monitoredFetch } from '../lib/selfHealingMonitor';
 
 interface PaymentGatewaySectionProps {
   preselectedBranchId?: string;
+  embedded?: boolean;
 }
 
 export interface PaymentReceipt {
@@ -66,7 +67,10 @@ function isValidLuhn(digits: string): boolean {
   return sum % 10 === 0;
 }
 
-export function PaymentGatewaySection({ preselectedBranchId }: PaymentGatewaySectionProps) {
+export function PaymentGatewaySection({
+  preselectedBranchId,
+  embedded = false,
+}: PaymentGatewaySectionProps) {
   const [branchId, setBranchId] = useState<string>(preselectedBranchId || 'pmb-transport');
   const [serviceLabel, setServiceLabel] = useState<string>(
     BRANCH_SERVICE_PRESETS[preselectedBranchId || 'pmb-transport']?.label ||
@@ -282,30 +286,36 @@ export function PaymentGatewaySection({ preselectedBranchId }: PaymentGatewaySec
   return (
     <section
       id="paiement"
-      className="no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20"
+      className={
+        embedded
+          ? 'no-print'
+          : 'no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20'
+      }
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
-          <div className="max-w-2xl">
-            <p className="text-sm font-medium text-[#F59E0B] mb-2">
-              Passerelle de Paiement Multi-Canaux & Reçus Clients
-            </p>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-              Régler par Carte Bancaire ou Mobile Money RDC
-            </h2>
-            <p className="mt-3 text-base text-zinc-400">
-              Règlement direct sur les comptes de {PMB_COMPANY.legalName} avec validation temps
-              réel par webhook HMAC-SHA256 et archivage immédiat du reçu dans votre compte client.
-            </p>
-          </div>
+      <div className={embedded ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'}>
+        {!embedded && (
+          <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-10">
+            <div className="max-w-2xl">
+              <p className="text-sm font-medium text-[#F59E0B] mb-2">
+                Passerelle de Paiement Multi-Canaux & Reçus Clients
+              </p>
+              <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
+                Régler par Carte Bancaire ou Mobile Money RDC
+              </h2>
+              <p className="mt-3 text-base text-zinc-400">
+                Règlement direct sur les comptes de {PMB_COMPANY.legalName} avec validation temps
+                réel par webhook HMAC-SHA256 et archivage immédiat du reçu dans votre compte client.
+              </p>
+            </div>
 
-          <div className="flex items-center gap-2 text-xs text-zinc-400">
-            <ShieldCheck className="w-4 h-4 text-[#229ED9] shrink-0" aria-hidden="true" />
-            <span>Visa · MasterCard · M-Pesa · Orange Money · Airtel Money · Africell Money</span>
+            <div className="flex items-center gap-2 text-xs text-zinc-400">
+              <ShieldCheck className="w-4 h-4 text-[#229ED9] shrink-0" aria-hidden="true" />
+              <span>Visa · MasterCard · M-Pesa · Orange Money · Airtel Money · Africell Money</span>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Colonne gauche : Formulaire de paiement multi-canaux */}
           <div className="lg:col-span-7 rounded-xl bg-[#1c1c1e]/92 border border-white/10 p-6 sm:p-8">
             {/* Sélecteur de canal principal */}

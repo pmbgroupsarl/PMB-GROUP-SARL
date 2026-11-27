@@ -6,6 +6,7 @@ import { monitoredFetch } from '../lib/selfHealingMonitor';
 
 interface ContactQuoteSectionProps {
   preselectedBranchId: string;
+  embedded?: boolean;
 }
 
 interface QuoteSubmission {
@@ -17,7 +18,10 @@ interface QuoteSubmission {
   submittedAt: string;
 }
 
-export function ContactQuoteSection({ preselectedBranchId }: ContactQuoteSectionProps) {
+export function ContactQuoteSection({
+  preselectedBranchId,
+  embedded = false,
+}: ContactQuoteSectionProps) {
   const { addOrder } = usePmbStore();
   const [branchId, setBranchId] = useState(preselectedBranchId || PMB_BRANCHES[0].id);
   const [fullName, setFullName] = useState('');
@@ -107,22 +111,24 @@ export function ContactQuoteSection({ preselectedBranchId }: ContactQuoteSection
   };
 
   return (
-    <section id="contact" className="no-print py-16 lg:py-24 scroll-mt-20">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mb-10">
-          <p className="text-sm font-medium text-[#229ED9] mb-2">
-            Contact Direct & Localisation
-          </p>
-          <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-            Parler à nos équipes à Kinshasa
-          </h2>
-          <p className="mt-3 text-base text-zinc-400">
-            Retrouvez l’ensemble de nos coordonnées officielles à Bandal Synkin ou adressez une
-            demande de devis ciblée à la division concernée.
-          </p>
-        </div>
+    <section id="contact" className={embedded ? 'no-print' : 'no-print py-16 lg:py-24 scroll-mt-20'}>
+      <div className={embedded ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'}>
+        {!embedded && (
+          <div className="max-w-2xl mb-10">
+            <p className="text-sm font-medium text-[#229ED9] mb-2">
+              Contact Direct & Localisation
+            </p>
+            <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
+              Parler à nos équipes à Kinshasa
+            </h2>
+            <p className="mt-3 text-base text-zinc-400">
+              Retrouvez l’ensemble de nos coordonnées officielles à Bandal Synkin ou adressez une
+              demande de devis ciblée à la division concernée.
+            </p>
+          </div>
+        )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* Colonne gauche : Coordonnées officielles permanentes */}
           <div className="lg:col-span-5 space-y-6">
             <div className="rounded-xl bg-[#1c1c1e] border border-white/10 p-6 space-y-6">

@@ -1,35 +1,47 @@
 import { useEffect, useState } from 'react';
-import { BranchItem, PMB_BRANCHES, PMB_COMPANY } from './data/pmbData';
+import { PMB_BRANCHES, PMB_COMPANY } from './data/pmbData';
 import { PmbStoreProvider } from './lib/pmbStore';
-import { AppPage, Header } from './components/Header';
-import { HeroCarousel3D } from './components/HeroCarousel3D';
-import { GlobalServicesExplorer } from './components/GlobalServicesExplorer';
-import { EventVideoShowcase } from './components/EventVideoShowcase';
-import { AgendaForumSection } from './components/AgendaForumSection';
-import { FAQSection } from './components/FAQSection';
-import { AboutSection } from './components/AboutSection';
-import { BranchDetailModal } from './components/BranchDetailModal';
-import { ContactQuoteSection } from './components/ContactQuoteSection';
-import { FondationPillarId, FondationSpaceView } from './components/FondationSpaceView';
+import { startSelfHealingMonitor } from './lib/selfHealingMonitor';
+import { AdminQADashboardModal } from './components/AdminQADashboardModal';
+import { BranchInternalTab, BranchSpaceView } from './components/BranchSpaceView';
+import { FondationPillarId } from './components/FondationSpaceView';
 import { FondationPortalSubTab } from './components/fondation/FondationPortalPillar';
 import { Footer } from './components/Footer';
+import { GroupInfoModal, GroupInfoTab } from './components/GroupInfoModal';
+import { AppView, Header } from './components/Header';
+import { HomeHubView } from './components/HomeHubView';
 import { PmbChatbotWidget } from './components/PmbChatbotWidget';
-import { AdminQADashboardModal } from './components/AdminQADashboardModal';
-import { startSelfHealingMonitor } from './lib/selfHealingMonitor';
+import { QuoteDrawerModal } from './components/QuoteDrawerModal';
+
+function resolveInitialNavigation(): { view: AppView; branchId: string | null } {
+  if (typeof window === 'undefined') return { view: 'home', branchId: null };
+  const hash = window.location.hash;
+  if (hash.startsWith('#fondation')) {
+    return { view: 'branch', branchId: 'pmb-fondation' };
+  }
+  if (hash.startsWith('#branche/')) {
+    const id = hash.replace('#branche/', '').split('/')[0];
+    if (PMB_BRANCHES.some((b) => b.id === id)) {
+      return { view: 'branch', branchId: id };
+    }
+  }
+  return { view: 'home', branchId: null };
+}
 
 function AppContent() {
-  const [activePage, setActivePage] = useState<AppPage>(() =>
-    typeof window !== 'undefined' && window.location.hash.startsWith('#fondation')
-      ? 'fondation'
-      : 'home'
-  );
+  const initial = resolveInitialNavigation();
+  const [activeView, setActiveView] = useState<AppView>(initial.view);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(initial.branchId);
+  const [branchInitialTab, setBranchInitialTab] = useState<BranchInternalTab>('services');
+
   const [fondationPillar, setFondationPillar] = useState<FondationPillarId>('pilier-4');
   const [fondationPortalSubTab, setFondationPortalSubTab] =
     useState<FondationPortalSubTab>('member');
 
-  const [activeCarouselIndex, setActiveCarouselIndex] = useState(0);
-  const [inspectedBranch, setInspectedBranch] = useState<BranchItem | null>(null);
+  const [quoteDrawerOpen, setQuoteDrawerOpen] = useState(false);
   const [quoteBranchId, setQuoteBranchId] = useState<string>(PMB_BRANCHES[0].id);
+  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
+  const [groupInfoTab, setGroupInfoTab] = useState<GroupInfoTab>('about');
   const [qaDashboardOpen, setQaDashboardOpen] = useState(false);
 
   useEffect(() => {
@@ -39,61 +51,54 @@ function AppContent() {
 
   useEffect(() => {
     const handleHashChange = () => {
-      const h = window.location.hash;
-      if (h.startsWith('#fondation')) {
-        setActivePage('fondation');
-      } else if (h && !h.startsWith('#fondation')) {
-        setActivePage('home');
-      }
+      const next = resolveInitialNavigation();
+      setActiveView(next.view);
+      setActiveBranchId(next.branchId);
     };
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const navigateHome = (sectionId?: string) => {
-    setActivePage('home');
-    setInspectedBranch(null);
+  const navigateHome = () => {
+    setActiveView('home');
+    setActiveBranchId(null);
     if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', sectionId ? `#${sectionId}` : '#accueil');
-    }
-    setTimeout(() => {
-      if (sectionId) {
-        document.getElementById(sectionId)?.scrollIntoView({ behavior: 'smooth' });
-      } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-      }
-    }, 60);
-  };
-
-  const navigateFondation = (
-    pillar: FondationPillarId = 'pilier-4',
-    portalSubTab?: FondationPortalSubTab
-  ) => {
-    setInspectedBranch(null);
-    setFondationPillar(pillar);
-    if (portalSubTab) {
-      setFondationPortalSubTab(portalSubTab);
-    }
-    setActivePage('fondation');
-    if (typeof window !== 'undefined') {
-      window.history.replaceState(null, '', `#fondation/${pillar}`);
+      window.history.replaceState(null, '', '#accueil');
       window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 
-  const handleRequestQuoteForBranch = (branchId: string) => {
-    setQuoteBranchId(branchId);
-    setInspectedBranch(null);
-    navigateHome('contact');
+  const navigateBranch = (
+    branchId: string,
+    tab: BranchInternalTab = 'services',
+    pillar?: FondationPillarId,
+    portalSubTab?: FondationPortalSubTab
+  ) => {
+    setActiveBranchId(branchId);
+    setBranchInitialTab(tab);
+    if (branchId === 'pmb-fondation') {
+      if (pillar) setFondationPillar(pillar);
+      if (portalSubTab) setFondationPortalSubTab(portalSubTab);
+    }
+    setActiveView('branch');
+    if (typeof window !== 'undefined') {
+      const nextHash =
+        branchId === 'pmb-fondation'
+          ? `#fondation/${pillar || fondationPillar}`
+          : `#branche/${branchId}`;
+      window.history.replaceState(null, '', nextHash);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
-  const handleJumpToSection = (sectionId: string) => {
-    setInspectedBranch(null);
-    if (sectionId === 'fondation') {
-      navigateFondation('pilier-2');
-      return;
-    }
-    navigateHome(sectionId);
+  const openQuoteForBranch = (branchId?: string) => {
+    setQuoteBranchId(branchId || activeBranchId || PMB_BRANCHES[0].id);
+    setQuoteDrawerOpen(true);
+  };
+
+  const openGroupInfo = (tab: GroupInfoTab = 'about') => {
+    setGroupInfoTab(tab);
+    setGroupInfoOpen(true);
   };
 
   return (
@@ -107,74 +112,68 @@ function AppContent() {
           src={PMB_COMPANY.watermarkLogo}
           alt=""
           referrerPolicy="no-referrer"
-          style={{ opacity: 0.2 }}
-          className="w-[min(86vw,780px)] h-auto object-contain select-none opacity-20 mix-blend-screen"
+          style={{ opacity: 0.16 }}
+          className="w-[min(86vw,780px)] h-auto object-contain select-none mix-blend-screen"
         />
       </div>
 
       <Header
-        activePage={activePage}
+        activeView={activeView}
+        activeBranchId={activeBranchId}
         onNavigateHome={navigateHome}
-        onNavigateFondation={() => navigateFondation('pilier-4')}
-        onRequestQuote={() => navigateHome('contact')}
+        onSelectBranch={(branchId) => navigateBranch(branchId)}
+        onOpenGroupInfo={() => openGroupInfo('about')}
+        onOpenQuoteDrawer={() => openQuoteForBranch()}
       />
 
       <main className="relative z-10 flex-1">
-        {activePage === 'fondation' ? (
-          <FondationSpaceView
-            activePillar={fondationPillar}
-            onChangePillar={setFondationPillar}
-            activePortalSubTab={fondationPortalSubTab}
-            onChangePortalSubTab={setFondationPortalSubTab}
-            onBackToGroupHome={() => navigateHome('accueil')}
+        {activeView === 'branch' && activeBranchId ? (
+          <BranchSpaceView
+            branchId={activeBranchId}
+            initialTab={branchInitialTab}
+            fondationPillar={fondationPillar}
+            onChangeFondationPillar={setFondationPillar}
+            fondationPortalSubTab={fondationPortalSubTab}
+            onChangeFondationPortalSubTab={setFondationPortalSubTab}
+            onSelectBranch={(id) => navigateBranch(id)}
+            onBackHome={navigateHome}
             onOpenQaDashboard={() => setQaDashboardOpen(true)}
           />
         ) : (
-          <>
-            <HeroCarousel3D
-              activeIndex={activeCarouselIndex}
-              onChangeIndex={setActiveCarouselIndex}
-              onSelectBranch={(branch) => setInspectedBranch(branch)}
-              onEnterFondation={() => navigateFondation('pilier-4')}
-              onExploreAll={() => navigateHome('services')}
-              isModalOpen={Boolean(inspectedBranch) || qaDashboardOpen}
-            />
-
-            <GlobalServicesExplorer
-              onSelectBranch={(branch) => setInspectedBranch(branch)}
-              onEnterFondation={() => navigateFondation('pilier-4')}
-            />
-
-            <EventVideoShowcase
-              onRequestEventQuote={() => handleRequestQuoteForBranch('pmb-event')}
-            />
-
-            <AgendaForumSection />
-
-            <FAQSection />
-
-            <AboutSection onSelectBranchIndex={setActiveCarouselIndex} />
-
-            <ContactQuoteSection preselectedBranchId={quoteBranchId} />
-          </>
+          <HomeHubView
+            onSelectBranch={(branchId) => navigateBranch(branchId)}
+            onOpenQuoteDrawer={() => openQuoteForBranch()}
+            onOpenGroupInfo={() => openGroupInfo('about')}
+          />
         )}
       </main>
 
       <Footer
         onNavigateHome={navigateHome}
-        onOpenFondationSpace={() => navigateFondation('pilier-4')}
-        onOpenAdminPortal={() => navigateFondation('pilier-3', 'admin')}
+        onSelectBranch={(branchId) => navigateBranch(branchId)}
+        onOpenAdminPortal={() =>
+          navigateBranch('pmb-fondation', 'services', 'pilier-3', 'admin')
+        }
+        onOpenGroupInfo={openGroupInfo}
         onOpenQaDashboard={() => setQaDashboardOpen(true)}
       />
 
-      <PmbChatbotWidget />
+      <PmbChatbotWidget
+        onOpenPayment={() => navigateBranch('pmb-fondation', 'services', 'pilier-1')}
+        onOpenFondationAdhesion={() => navigateBranch('pmb-fondation', 'services', 'pilier-2')}
+      />
 
-      <BranchDetailModal
-        branch={inspectedBranch}
-        onClose={() => setInspectedBranch(null)}
-        onRequestQuoteForBranch={handleRequestQuoteForBranch}
-        onEnterFondation={(pillar) => navigateFondation(pillar || 'pilier-2')}
-        onJumpToSection={handleJumpToSection}
+      <QuoteDrawerModal
+        isOpen={quoteDrawerOpen}
+        preselectedBranchId={quoteBranchId}
+        onClose={() => setQuoteDrawerOpen(false)}
+      />
+
+      <GroupInfoModal
+        isOpen={groupInfoOpen}
+        initialTab={groupInfoTab}
+        onClose={() => setGroupInfoOpen(false)}
+        onExploreBranch={(branchId) => navigateBranch(branchId)}
       />
 
       <AdminQADashboardModal

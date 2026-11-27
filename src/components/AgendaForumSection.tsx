@@ -24,18 +24,28 @@ interface ForumThread {
   replies: ForumReply[];
 }
 
-export function AgendaForumSection() {
+interface AgendaForumSectionProps {
+  embedded?: boolean;
+  initialBranchFilter?: string;
+}
+
+export function AgendaForumSection({
+  embedded = false,
+  initialBranchFilter = 'all',
+}: AgendaForumSectionProps = {}) {
   const { cms, incrementNewsRsvp } = usePmbStore();
   const events = cms.newsActus;
 
   const [activeTab, setActiveTab] = useState<'agenda' | 'forum'>('agenda');
-  const [branchFilter, setBranchFilter] = useState<string>('all');
+  const [branchFilter, setBranchFilter] = useState<string>(initialBranchFilter);
 
   const [rsvpedIds, setRsvpedIds] = useState<string[]>([]);
 
   const [threads, setThreads] = useState<ForumThread[]>([]);
   const [authorName, setAuthorName] = useState('');
-  const [threadBranchId, setThreadBranchId] = useState(PMB_BRANCHES[0].id);
+  const [threadBranchId, setThreadBranchId] = useState(
+    initialBranchFilter !== 'all' ? initialBranchFilter : PMB_BRANCHES[0].id
+  );
   const [threadTitle, setThreadTitle] = useState('');
   const [threadQuestion, setThreadQuestion] = useState('');
   const [forumError, setForumError] = useState<string | null>(null);
@@ -44,6 +54,13 @@ export function AgendaForumSection() {
   const [replyOpenId, setReplyOpenId] = useState<string | null>(null);
   const [replyAuthor, setReplyAuthor] = useState('');
   const [replyMessage, setReplyMessage] = useState('');
+
+  useEffect(() => {
+    setBranchFilter(initialBranchFilter);
+    if (initialBranchFilter !== 'all') {
+      setThreadBranchId(initialBranchFilter);
+    }
+  }, [initialBranchFilter]);
 
   useEffect(() => {
     void monitoredFetch('/api/forum')
@@ -126,21 +143,37 @@ export function AgendaForumSection() {
   return (
     <section
       id="communaute"
-      className="no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20"
+      className={
+        embedded
+          ? 'no-print'
+          : 'no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20'
+      }
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
+      <div className={embedded ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'}>
+        <div
+          className={`flex flex-col lg:flex-row lg:items-end justify-between gap-4 ${
+            embedded ? 'mb-5' : 'mb-8 gap-6'
+          }`}
+        >
           <div className="max-w-2xl">
-            <p className="text-sm font-medium text-[#229ED9] mb-2">
+            <p className="text-xs sm:text-sm font-medium text-[#229ED9] mb-1">
               Agenda, Annonces & Forum Clients
             </p>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
-              Actualités des 6 branches et échanges directs
+            <h2
+              className={
+                embedded
+                  ? 'text-xl sm:text-2xl font-bold text-white tracking-tight'
+                  : 'text-2xl sm:text-4xl font-bold text-white tracking-tight'
+              }
+            >
+              Actualités & échanges directs avec nos équipes
             </h2>
-            <p className="mt-3 text-base text-zinc-400">
-              Consultez les prochains webinaires et campagnes de terrain à Kinshasa ou posez vos
-              questions directement aux équipes PMB GROUP SARL.
-            </p>
+            {!embedded && (
+              <p className="mt-3 text-base text-zinc-400">
+                Consultez les prochains webinaires et campagnes de terrain à Kinshasa ou posez vos
+                questions directement aux équipes PMB GROUP SARL.
+              </p>
+            )}
           </div>
 
           <div className="inline-flex items-center gap-1 p-1 rounded-lg bg-[#1c1c1e] border border-white/10 self-start">

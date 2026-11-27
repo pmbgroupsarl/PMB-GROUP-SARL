@@ -16,7 +16,15 @@ const QUICK_PROMPTS = [
   'Coordonnées siège Kinshasa',
 ];
 
-export function PmbChatbotWidget() {
+interface PmbChatbotWidgetProps {
+  onOpenPayment?: () => void;
+  onOpenFondationAdhesion?: () => void;
+}
+
+export function PmbChatbotWidget({
+  onOpenPayment,
+  onOpenFondationAdhesion,
+}: PmbChatbotWidgetProps = {}) {
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -172,20 +180,26 @@ export function PmbChatbotWidget() {
 
             <div className="flex items-center justify-between gap-2 text-[11px] text-zinc-400 pt-1">
               <div className="flex items-center gap-3">
-                <a
-                  href="#paiement"
-                  onClick={() => setIsOpen(false)}
-                  className="text-[#F59E0B] hover:underline"
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenPayment?.();
+                  }}
+                  className="text-[#F59E0B] hover:underline cursor-pointer"
                 >
                   Paiement
-                </a>
-                <a
-                  href="#fondation"
-                  onClick={() => setIsOpen(false)}
-                  className="text-[#229ED9] hover:underline"
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsOpen(false);
+                    onOpenFondationAdhesion?.();
+                  }}
+                  className="text-[#229ED9] hover:underline cursor-pointer"
                 >
                   Adhésion Fondation
-                </a>
+                </button>
               </div>
               <a
                 href={PMB_COMPANY.phones[0].whatsappUrl}

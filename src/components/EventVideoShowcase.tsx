@@ -8,9 +8,13 @@ import {
 
 interface EventVideoShowcaseProps {
   onRequestEventQuote: () => void;
+  embedded?: boolean;
 }
 
-export function EventVideoShowcase({ onRequestEventQuote }: EventVideoShowcaseProps) {
+export function EventVideoShowcase({
+  onRequestEventQuote,
+  embedded = false,
+}: EventVideoShowcaseProps) {
   const [selectedCategory, setSelectedCategory] = useState<VideoCategory>('all');
   const [activeVideoId, setActiveVideoId] = useState<string>(PMB_EVENT_VIDEOS[0].id);
 
@@ -36,28 +40,44 @@ export function EventVideoShowcase({ onRequestEventQuote }: EventVideoShowcasePr
   return (
     <section
       id="videos-event"
-      className="no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20"
+      className={
+        embedded
+          ? 'no-print'
+          : 'no-print py-16 lg:py-24 border-b border-white/[0.08] scroll-mt-20'
+      }
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className={embedded ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8'}>
         {/* En-tête de section */}
-        <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6 mb-8">
+        <div
+          className={`flex flex-col lg:flex-row lg:items-end justify-between gap-4 ${
+            embedded ? 'mb-5' : 'mb-8 gap-6'
+          }`}
+        >
           <div className="max-w-2xl">
-            <p className="text-sm font-medium text-[#A855F7] mb-2">
-              05. PMB Event · Réalisations Audiovisuelles & Scéniques
+            <p className="text-xs sm:text-sm font-medium text-[#A855F7] mb-1">
+              PMB Event · Réalisations Audiovisuelles & Scéniques
             </p>
-            <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight">
+            <h2
+              className={
+                embedded
+                  ? 'text-xl sm:text-2xl font-bold text-white tracking-tight'
+                  : 'text-2xl sm:text-4xl font-bold text-white tracking-tight'
+              }
+            >
               Médiathèque terrain & installations LED à Kinshasa
             </h2>
-            <p className="mt-3 text-base text-zinc-400">
-              Découvrez nos 27 captations réelles : fabrication et installation d’écrans géants LED,
-              sommets parlementaires, concerts en stades, églises et cérémonies officielles.
-            </p>
+            {!embedded && (
+              <p className="mt-3 text-base text-zinc-400">
+                Découvrez nos 27 captations réelles : fabrication et installation d’écrans géants LED,
+                sommets parlementaires, concerts en stades, églises et cérémonies officielles.
+              </p>
+            )}
           </div>
 
           <button
             type="button"
             onClick={onRequestEventQuote}
-            className="inline-flex items-center justify-center px-5 py-3 text-sm font-semibold text-white bg-[#7B1FA2] hover:bg-[#6a1b8c] rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
+            className="inline-flex items-center justify-center px-4 py-2.5 text-xs sm:text-sm font-semibold text-white bg-[#7B1FA2] hover:bg-[#6a1b8c] rounded-lg transition-colors cursor-pointer whitespace-nowrap shrink-0"
           >
             Réserver PMB Event
           </button>
